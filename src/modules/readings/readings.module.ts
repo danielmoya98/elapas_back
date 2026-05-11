@@ -21,5 +21,6 @@ import { AuditModule } from '../../infrastructure/audit/audit.module';
     PrismaReadingRepository,
     TariffService,
   ],
+  exports: [TariffService],
 })
 export class ReadingsModule { }

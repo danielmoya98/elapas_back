@@ -130,6 +130,8 @@ model Meter {
   status MeterStatus @default(ACTIVO)
 
   installedAt DateTime?
+  gpsLat      Float?
+  gpsLng      Float?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -138,7 +140,8 @@ model Meter {
   // Relación opcional
   customer CustomerProfile? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
-  readings Reading[]
+  readings   Reading[]
+  workOrders WorkOrder[]
 
   @@index([customerId])
 }
@@ -341,6 +344,7 @@ model WorkOrder {
 
   technician User             @relation("TechOrders", fields: [technicianId], references: [id])
   customer   CustomerProfile? @relation(fields: [customerId], references: [id])
+  meter      Meter?           @relation(fields: [meterId], references: [id])
 
   @@index([technicianId])
   @@index([customerId])
