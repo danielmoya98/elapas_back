@@ -30,7 +30,11 @@ export class WorkOrdersService {
       orderBy: { scheduledFor: 'asc' }
     });
   }
-  async executeInstallation(workOrderId: string, technicianId: string, dto: ExecuteInstallationDto) {
+  async executeInstallation(
+    workOrderId: string,
+    technicianId: string,
+    dto: ExecuteInstallationDto,
+  ) {
     const workOrder = await this.prisma.workOrder.findUnique({
       where: { id: workOrderId },
       include: { customer: true }
@@ -82,12 +86,19 @@ export class WorkOrdersService {
           entity: 'WORK_ORDER',
           entityId: workOrderId,
           action: 'EXECUTE_INSTALLATION',
-          newData: { meterCode: dto.meterCode, gpsLat: dto.gpsLat, gpsLng: dto.gpsLng },
+          newData: {
+            meterCode: dto.meterCode,
+            gpsLat: dto.gpsLat,
+            gpsLng: dto.gpsLng,
+          },
         }
       });
 
       // 🔥 NUEVO: E. Notificar al Administrador en la Base de Datos
-      const admins = await tx.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+      const admins = await tx.user.findMany({
+        where: { role: 'ADMIN' },
+        select: { id: true },
+      });
       if (admins.length > 0) {
         await tx.notification.createMany({
           data: admins.map(admin => ({
@@ -118,7 +129,10 @@ export class WorkOrdersService {
         );
       }
     } catch (error) {
-      console.error('Error al enviar notificación de bienvenida al cliente:', error);
+      console.error(
+        'Error al enviar notificación de bienvenida al cliente:',
+        error,
+      );
     }
 
     return {
