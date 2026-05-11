@@ -4,6 +4,8 @@ import { WorkOrdersService } from './work-orders.service';
 import { ExecuteInstallationDto } from './dto/execute-installation.dto';
 import { CreateBulkReadingsDto } from './dto/create-bulk-readings.dto';
 import { ExecuteReadingDto } from './dto/execute-reading.dto';
+import { CreateCutOrderDto } from './dto/create-cut-order.dto';
+import { ExecuteCutDto } from './dto/execute-cut.dto';
 import { JwtAuthGuard } from '../auth/presentation/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/presentation/guards/roles.guard';
 import { Roles } from '../auth/presentation/decorators/roles.decorator';
@@ -16,7 +18,6 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 export class WorkOrdersController {
   constructor(private readonly workOrdersService: WorkOrdersService) { }
 
-  // 🔥 NUEVO: Obtener TODAS las órdenes (Para el Panel Web en React)
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
@@ -33,7 +34,6 @@ export class WorkOrdersController {
     );
   }
 
-  // Obtener las órdenes asignadas al técnico
   @Get('assigned')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TECNICO')
@@ -44,7 +44,6 @@ export class WorkOrdersController {
     return this.workOrdersService.getAssigned(user.sub, type);
   }
 
-  // 🔥 NUEVO: Generar Órdenes de Lectura Masivas (Admin)
   @Post('bulk-readings')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
@@ -52,7 +51,14 @@ export class WorkOrdersController {
     return this.workOrdersService.createBulkReadingOrders(dto);
   }
 
-  // Ejecutar la instalación
+  // 🔥 NUEVO: Admin genera Orden de Corte
+  @Post('cuts')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  createCutOrder(@Body() dto: CreateCutOrderDto) {
+    return this.workOrdersService.createCutOrder(dto);
+  }
+
   @Patch(':id/execute')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TECNICO')
@@ -64,7 +70,6 @@ export class WorkOrdersController {
     return this.workOrdersService.executeInstallation(id, user.sub, dto);
   }
 
-  // 🔥 NUEVO: Ejecutar la lectura (Técnico)
   @Patch(':id/execute-reading')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TECNICO')
@@ -74,5 +79,17 @@ export class WorkOrdersController {
     @GetUser() user: any,
   ) {
     return this.workOrdersService.executeReading(id, user.sub, dto);
+  }
+
+  // 🔥 NUEVO: Técnico ejecuta el Corte
+  @Patch(':id/execute-cut')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TECNICO')
+  executeCut(
+    @Param('id') id: string,
+    @Body() dto: ExecuteCutDto,
+    @GetUser() user: any,
+  ) {
+    return this.workOrdersService.executeCut(id, user.sub, dto);
   }
 }

@@ -314,6 +314,7 @@ enum WorkOrderType {
   INSTALLATION
   READING
   CUT
+  RECONNECTION
 }
 
 enum WorkOrderStatus {
