@@ -30,10 +30,10 @@ export class WorkOrdersService {
       orderBy: { scheduledFor: 'asc' }
     });
   }
-
   async executeInstallation(workOrderId: string, technicianId: string, dto: ExecuteInstallationDto) {
     const workOrder = await this.prisma.workOrder.findUnique({
       where: { id: workOrderId },
+      include: { customer: true }
     });
 
     if (!workOrder) throw new NotFoundException('Orden de trabajo no encontrada');
@@ -62,7 +62,7 @@ export class WorkOrdersService {
         data: { status: 'ACTIVE' }
       });
 
-      // C. Marcar la Orden como Completada y guardar evidencia (GPS y Foto)
+      // C. Marcar la Orden como Completada y guardar evidencia
       const completedOrder = await tx.workOrder.update({
         where: { id: workOrderId },
         data: {
@@ -75,12 +75,35 @@ export class WorkOrdersService {
         }
       });
 
+      // 🔥 NUEVO: D. Crear registro de Auditoría de la operación
+      await tx.auditLog.create({
+        data: {
+          userId: technicianId,
+          entity: 'WORK_ORDER',
+          entityId: workOrderId,
+          action: 'EXECUTE_INSTALLATION',
+          newData: { meterCode: dto.meterCode, gpsLat: dto.gpsLat, gpsLng: dto.gpsLng },
+        }
+      });
+
+      // 🔥 NUEVO: E. Notificar al Administrador en la Base de Datos
+      const admins = await tx.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+      if (admins.length > 0) {
+        await tx.notification.createMany({
+          data: admins.map(admin => ({
+            userId: admin.id,
+            title: '✅ Instalación Completada',
+            message: `El técnico instaló el medidor ${dto.meterCode} para ${workOrder.customer?.fullName}.`,
+            type: 'system' // Este type te servirá en React para ponerle un icono verde
+          }))
+        });
+      }
+
       return completedOrder;
     });
 
-    // 🔥 MAGIA FINAL: Disparar la notificación push al ciudadano 🔥
+    // F. Disparar la notificación push al ciudadano (FCM)
     try {
-      // Buscamos el usuario asociado al perfil del cliente para obtener su Token de Firebase
       const customerRecord = await this.prisma.customerProfile.findUnique({
         where: { id: customerId },
         include: { user: true }
@@ -95,7 +118,6 @@ export class WorkOrdersService {
         );
       }
     } catch (error) {
-      // Solo lo logueamos, no rompemos el proceso si Firebase falla
       console.error('Error al enviar notificación de bienvenida al cliente:', error);
     }
 
