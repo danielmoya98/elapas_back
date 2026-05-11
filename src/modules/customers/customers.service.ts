@@ -1,15 +1,19 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role, CustomerCategory } from '../../../prisma/generated/client';
 import { CreateCustomerDto } from './application/dto/create-customer.dto';
 import { PrismaCustomerRepository } from './infrastructure/repositories/prisma-customer.repository';
+import { ApproveCustomerDto } from './application/dto/approve-customer.dto';
+import { CustomerStatus, WorkOrderType, WorkOrderStatus } from '../../../prisma/generated/client';
+import { FcmService } from '../notifications/fcm.service';
 
 @Injectable()
 export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customersRepository: PrismaCustomerRepository,
+    private readonly fcmService: FcmService,
   ) { }
 
   async create(dto: CreateCustomerDto) {
@@ -77,4 +81,53 @@ export class CustomersService {
 
     return { data: mappedData, meta: result.meta };
   }
+
+  async approveAndAssign(customerId: string, dto: ApproveCustomerDto, adminId: string) {
+    const customer = await this.prisma.customerProfile.findUnique({
+      where: { id: customerId }
+    });
+
+    if (!customer) throw new NotFoundException('Cliente no encontrado');
+    if (customer.status !== 'PENDING_VERIFICATION') {
+      throw new BadRequestException('Este cliente ya fue verificado o está suspendido');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const workOrder = await tx.workOrder.create({
+        data: {
+          type: 'INSTALLATION',
+          status: 'PENDING',
+          customerId: customer.id,
+          technicianId: dto.technicianId,
+          description: dto.description ?? 'Instalación de nuevo medidor',
+          scheduledFor: new Date(dto.scheduledFor),
+        },
+        include: {
+          technician: true,
+          customer: true
+        }
+      });
+
+      return workOrder;
+    });
+
+    // 🔥 LA MAGIA OCURRE AQUÍ 🔥
+    if (result.technician.fcmToken && result.customer) {
+      await this.fcmService.sendPushNotification(
+        result.technician.fcmToken,
+        '🛠️ Nueva Instalación Asignada',
+        `Dirígete a: ${result.customer.address} para instalar el medidor de ${result.customer.fullName}.`,
+        {
+          workOrderId: result.id,
+          type: 'INSTALLATION'
+        }
+      );
+    }
+
+    return {
+      message: 'Cliente aprobado y orden de trabajo generada con éxito',
+      workOrderId: result.id
+    };
+  }
+
 }

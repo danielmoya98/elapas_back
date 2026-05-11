@@ -16,6 +16,8 @@ import { RolesGuard } from '../auth/presentation/guards/roles.guard';
 import { Roles } from '../auth/presentation/decorators/roles.decorator';
 import { GetUser } from '../auth/presentation/decorators/get-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Param, Patch } from '@nestjs/common';
+import { ApproveCustomerDto } from './application/dto/approve-customer.dto';
 
 @ApiTags('Customers')
 @ApiBearerAuth()
@@ -31,6 +33,17 @@ export class CustomersController {
   @Roles('ADMIN')
   create(@Body() dto: CreateCustomerDto) {
     return this.customersService.create(dto);
+  }
+
+  @Patch(':id/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  approveAndAssign(
+    @Param('id') customerId: string,
+    @Body() dto: ApproveCustomerDto,
+    @GetUser() admin: any, // Para saber qué admin aprobó esto
+  ) {
+    return this.customersService.approveAndAssign(customerId, dto, admin.sub);
   }
 
   @Get('my-status')
