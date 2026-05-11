@@ -49,7 +49,6 @@ export class CustomersService {
       });
     });
   }
-
   async findAll(page = 1, limit = 10) {
     const result = await this.customersRepository.findAll({ page, limit });
 
@@ -59,14 +58,23 @@ export class CustomersService {
         .filter(inv => inv.status === 'VENCIDO')
         .reduce((sum, inv) => sum + inv.total, 0);
 
-      // Determinación de estado para el Dashboard Web
-      let status = 'Activo';
-      const lastCut = customer.cuts[0];
+      // 🔥 CORRECCIÓN: Creamos una variable explícita de tipo string para el frontend
+      let displayStatus = 'Activo';
 
-      if (lastCut && lastCut.status === 'EJECUTADO') {
-        status = 'Suspendido';
-      } else if (debt > 0) {
-        status = 'Mora';
+      if (customer.status === 'PENDING_VERIFICATION') {
+        // Mantenemos el string exacto que el Frontend espera para el Drawer
+        displayStatus = 'PENDING_VERIFICATION';
+      } else {
+        // Solo calculamos Mora o Suspensión si el cliente YA está activo
+        const lastCut = customer.cuts?.[0];
+
+        if (lastCut && lastCut.status === 'EJECUTADO') {
+          displayStatus = 'Suspendido';
+        } else if (debt > 0) {
+          displayStatus = 'Mora';
+        } else {
+          displayStatus = 'Activo';
+        }
       }
 
       // Limpiamos el objeto para el frontend
@@ -74,14 +82,13 @@ export class CustomersService {
       return {
         ...cleanCustomer,
         debt: debt.toFixed(2),
-        status,
+        status: displayStatus, // Enviamos el string amigable al frontend
         code: `C-${customer.id.slice(-5).toUpperCase()}`
       };
     });
 
     return { data: mappedData, meta: result.meta };
   }
-
   async approveAndAssign(customerId: string, dto: ApproveCustomerDto, adminId: string) {
     const customer = await this.prisma.customerProfile.findUnique({
       where: { id: customerId }
