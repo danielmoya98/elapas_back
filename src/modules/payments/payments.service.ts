@@ -11,8 +11,8 @@ import { CreatePaymentDto } from './application/dto/create-payment.dto';
 import { DashboardGateway } from '../../infrastructure/websocket/gateways/dashboard.gateway';
 import { AuditService } from '../../infrastructure/audit/audit.service';
 import { PrismaPaymentRepository } from './infrastructure/repositories/prisma-payment.repository';
-// 👇 Importa tu servicio de notificaciones (Ajusta la ruta según tu estructura)
-import { NotificationsService } from '../notifications/notifications.service';
+// 🔥 IMPORTAMOS FCM SERVICE PARA EL PUSH AL CELULAR
+import { FcmService } from '../notifications/fcm.service';
 
 @Injectable()
 export class PaymentsService {
@@ -23,14 +23,13 @@ export class PaymentsService {
     private readonly paymentsRepository: PrismaPaymentRepository,
     @Inject(CACHE_MANAGER)
     private readonly cacheManager: Cache,
-    private readonly notificationsService: NotificationsService, // <-- NUEVO
+    private readonly fcmService: FcmService, // <-- 🔥 AÑADIDO AQUÍ
   ) { }
 
   async create(dto: CreatePaymentDto, userId: string) {
-    // Incluimos al cliente para poder notificarle
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: dto.invoiceId },
-      include: { customer: true } // <-- NUEVO
+      include: { customer: { include: { user: true } } } // Traemos al user para sacar el fcmToken
     });
 
     if (!invoice) {
@@ -66,11 +65,25 @@ export class PaymentsService {
         });
       }
 
+      // 🔥 NUEVO: Notificar al Administrador en la Base de Datos
+      const admins = await tx.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+      if (admins.length > 0) {
+        await tx.notification.createMany({
+          data: admins.map(admin => ({
+            userId: admin.id,
+            title: '💰 Nuevo Ingreso (QR)',
+            message: `Pago recibido de Bs ${dto.amount} del cliente ${invoice.customer?.fullName}. Factura #${dto.invoiceId.slice(-5).toUpperCase()}`,
+            type: 'payment'
+          }))
+        });
+      }
+
       return createdPayment;
     });
 
     await this.cacheManager.del('dashboard:stats');
 
+    // Emite el evento al websocket para actualizar el Dashboard de React en tiempo real
     this.dashboardGateway.emitPaymentCreated({
       paymentId: payment.id,
       amount: payment.amount,
@@ -83,14 +96,18 @@ export class PaymentsService {
       newData: payment,
     });
 
-    // 🔥 NUEVO: Disparamos la notificación al Cliente
-    if (invoice.customer && invoice.customer.userId) {
-      await this.notificationsService.createNotification({
-        userId: invoice.customer.userId,
-        title: 'Pago Recibido',
-        message: `Hemos recibido tu pago de Bs ${dto.amount} exitosamente. ¡Gracias!`,
-        type: 'payment',
-      });
+    // 🔥 NUEVO: Disparamos la notificación PUSH real al Cliente
+    try {
+      if (invoice.customer?.user?.fcmToken) {
+        await this.fcmService.sendPushNotification(
+          invoice.customer.user.fcmToken,
+          '✅ Pago Confirmado',
+          `Gracias por su pago de Bs ${dto.amount}. Recibo #REC-${payment.id.slice(-5).toUpperCase()} generado con éxito.`,
+          { type: 'PAYMENT_RECEIVED', invoiceId: invoice.id }
+        );
+      }
+    } catch (error) {
+      console.error('Error al enviar Push de pago al cliente:', error);
     }
 
     return payment;
