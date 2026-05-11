@@ -160,6 +160,7 @@ export class WorkOrdersService {
       where: { id: workOrderId },
       include: {
         customer: true,
+        technician: true,
         meter: { include: { readings: { orderBy: { createdAt: 'desc' }, take: 1 } } }
       }
     });
@@ -202,7 +203,7 @@ export class WorkOrdersService {
           consumption: tariff.consumption, fixedCharge: tariff.fixedCharge,
           unitPrice: tariff.unitPrice, penaltyAmount: tariff.penaltyAmount,
           subtotal: tariff.subtotal, total: tariff.total, dueDate,
-          status: 'PENDIENTE' // 🔥 CORRECCIÓN: Estado válido según tu Enum
+          status: 'PENDIENTE'
         },
       });
 
@@ -215,11 +216,15 @@ export class WorkOrdersService {
         data: { userId: technicianId, entity: 'WORK_ORDER', entityId: workOrderId, action: 'EXECUTE_READING', newData: { consumption, total: tariff.total } }
       });
 
+      // 🔥 Notificación en Base de Datos para el Administrador
       const admins = await tx.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
       if (admins.length > 0) {
         await tx.notification.createMany({
           data: admins.map(a => ({
-            userId: a.id, title: '📑 Factura Generada', message: `Lectura procesada para ${workOrder.customer?.fullName}. Total: Bs ${tariff.total}`, type: 'system'
+            userId: a.id,
+            title: '📈 Lectura Completada',
+            message: `Técnico ${workOrder.technician.fullName} registró lectura para ${workOrder.customer?.fullName}. Consumo: ${consumption}m³ - Total: Bs ${tariff.total}`,
+            type: 'system'
           }))
         });
       }
