@@ -63,6 +63,12 @@ export class UsersController {
     return this.usersService.assignDistricts(id, dto.districtIds);
   }
 
+  @Patch('me/fcm-token')
+  @UseGuards(JwtAuthGuard)
+  updateFcmToken(@Request() req, @Body('fcmToken') fcmToken: string) {
+    return this.usersService.updateFcmToken(req.user.sub, fcmToken);
+  }
+
   @Post(':id/reset-password')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')

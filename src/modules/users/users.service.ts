@@ -132,4 +132,14 @@ export class UsersService {
 
     return { message: 'Contraseña reseteada', tempPassword };
   }
+
+  // ... tus otros métodos
+
+  async updateFcmToken(userId: string, fcmToken: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { fcmToken },
+    });
+    return { message: 'Token actualizado' };
+  }
 }

@@ -12,6 +12,7 @@ import { UpdatePasswordDto } from './application/dto/update-password.dto';
 
 import { PrismaUserRepository } from './infrastructure/repositories/prisma-user.repository';
 import { AuditService } from '../../infrastructure/audit/audit.service';
+import { Role } from '../../../../prisma/generated/client';
 
 @Injectable()
 export class AuthService {
@@ -30,11 +31,34 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    const user = await this.usersRepository.create({
+    // Preparamos la data base del usuario
+    const userData: any = {
       email: dto.email,
       password: hashedPassword,
       role: dto.role,
-    });
+      fullName: dto.fullName,
+      fcmToken: dto.fcmToken, // Guardamos el token de Firebase
+    };
+
+    // 🔥 LÓGICA DE CLIENTE: Si es cliente, creamos su perfil anidado
+    if (dto.role === Role.CLIENTE) {
+      // Opcional: Validar que el CI no exista ya en CustomerProfile
+      // await this.validateUniqueCi(dto.ci);
+
+      userData.customer = {
+        create: {
+          fullName: dto.fullName,
+          ci: dto.ci,
+          address: dto.address,
+          districtId: dto.districtId,
+          // category y status tomarán sus valores @default ('DOMESTICA' y 'PENDIENTE_VERIFICACION')
+        },
+      };
+    }
+
+    // Usamos el repositorio (Asegúrate que PrismaUserRepository acepte `customer: { create: ... }`)
+    // Si tu repositorio bloquea campos extra, podrías necesitar inyectar PrismaService aquí y usar this.prisma.user.create
+    const user = await this.usersRepository.create(userData);
 
     await this.auditService.log({
       userId: user.id,
@@ -51,8 +75,8 @@ export class AuthService {
         email: user.email,
         role: user.role,
         fullName: user.fullName,
-        avatarUrl: user.avatarUrl
-      }
+        avatarUrl: user.avatarUrl,
+      },
     };
   }
 
@@ -85,7 +109,6 @@ export class AuthService {
       newData: { email: user.email, role: user.role },
     });
 
-    // 🔥 NUEVO: Actualizamos la última conexión del usuario 🔥
     await this.usersRepository.update(user.id, { lastLoginAt: new Date() });
 
     return {
@@ -95,8 +118,8 @@ export class AuthService {
         email: user.email,
         role: user.role,
         fullName: user.fullName,
-        avatarUrl: user.avatarUrl
-      }
+        avatarUrl: user.avatarUrl,
+      },
     };
   }
 

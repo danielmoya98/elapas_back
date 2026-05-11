@@ -50,18 +50,18 @@ model User {
   email    String @unique
   password String
 
-  role      Role
-  fullName  String? // <-- NUEVO: Para el perfil del Admin/Técnico
-  avatarUrl String? // <-- NUEVO: Para la foto de perfil
-
+  role        Role
+  fullName    String? // <-- NUEVO: Para el perfil del Admin/Técnico
+  avatarUrl   String? // <-- NUEVO: Para la foto de perfil
+  fcmToken    String? // <-- NUEVO: Para enviarle notificaciones Push
   isActive    Boolean   @default(true)
   lastLoginAt DateTime? // <-- NUEVO: Para saber su última conexión rápida
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  customer CustomerProfile?
-
+  customer      CustomerProfile?
+  workOrders    WorkOrder[]      @relation("TechOrders") // <-- NUEVO
   readings      Reading[]
   cuts          ServiceCut[]
   payments      Payment[]
@@ -93,21 +93,22 @@ model CustomerProfile {
 
   fullName String
 
-  ci      String  @unique
-  phone   String?
-  address String
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  ci        String         @unique
+  phone     String?
+  address   String
+  status    CustomerStatus @default(PENDING_VERIFICATION)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
   deletedAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  district District         @relation(fields: [districtId], references: [id])
-  category CustomerCategory @default(DOMESTICA)
-  meters   Meter[]
-  invoices Invoice[]
-  cuts     ServiceCut[]
+  district   District         @relation(fields: [districtId], references: [id])
+  category   CustomerCategory @default(DOMESTICA)
+  meters     Meter[]
+  invoices   Invoice[]
+  cuts       ServiceCut[]
+  workOrders WorkOrder[]
 
   @@index([districtId])
 }
@@ -298,4 +299,49 @@ enum CustomerCategory {
   DOMESTICA
   COMERCIAL
   CONDOMINIO
+}
+
+enum CustomerStatus {
+  PENDING_VERIFICATION // <-- Cuando recién se registra
+  ACTIVE // <-- Cuando el técnico instala el medidor
+  SUSPENDED // <-- Por cortes
+}
+
+enum WorkOrderType {
+  INSTALLATION
+  READING
+  CUT
+}
+
+enum WorkOrderStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+model WorkOrder {
+  id     String          @id @default(cuid())
+  type   WorkOrderType
+  status WorkOrderStatus @default(PENDING)
+
+  technicianId String
+  customerId   String?
+  meterId      String? // Se llenará al instalar
+
+  description  String?
+  scheduledFor DateTime // Cuándo debe ir el técnico
+
+  // Evidencia (Se llena cuando el técnico finaliza)
+  executionLat Float?
+  executionLng Float?
+  photoUrl     String?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  technician User             @relation("TechOrders", fields: [technicianId], references: [id])
+  customer   CustomerProfile? @relation(fields: [customerId], references: [id])
+
+  @@index([technicianId])
+  @@index([customerId])
 }
