@@ -14,9 +14,288 @@ datasource db {
   provider = "postgresql"
 }
 
-model Product {
-  id Int @default(autoincrement()) @id
+enum Role {
+  ADMIN
+  TECNICO
+  CLIENTE
+}
 
-  name String
-  description String?
+enum MeterStatus {
+  ACTIVO
+  DANADO
+  SUSPENDIDO
+}
+
+enum InvoiceStatus {
+  PENDIENTE
+  PAGADO
+  VENCIDO
+}
+
+enum CutStatus {
+  PENDIENTE
+  EJECUTADO
+  RECONEXION
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  QR
+  TRANSFERENCIA
+}
+
+model User {
+  id String @id @default(cuid())
+
+  email    String @unique
+  password String
+
+  role      Role
+  fullName  String? // <-- NUEVO: Para el perfil del Admin/Técnico
+  avatarUrl String? // <-- NUEVO: Para la foto de perfil
+
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime? // <-- NUEVO: Para saber su última conexión rápida
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  customer CustomerProfile?
+
+  readings      Reading[]
+  cuts          ServiceCut[]
+  payments      Payment[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  districts     District[] // <-- NUEVO: Relación M:N con Distritos (Zonas asignadas)
+
+  @@index([role])
+}
+
+model District {
+  id String @id @default(cuid())
+
+  name String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customers   CustomerProfile[]
+  technicians User[]
+  userId      String?
+}
+
+model CustomerProfile {
+  id String @id @default(cuid())
+
+  userId     String @unique
+  districtId String
+
+  fullName String
+
+  ci      String  @unique
+  phone   String?
+  address String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  district District         @relation(fields: [districtId], references: [id])
+  category CustomerCategory @default(DOMESTICA)
+  meters   Meter[]
+  invoices Invoice[]
+  cuts     ServiceCut[]
+
+  @@index([districtId])
+}
+
+enum MeterType {
+  MECANICO
+  ULTRASONICO // IoT
+}
+
+model Meter {
+  id String @id @default(cuid())
+
+  customerId String? // <-- OPCIONAL (Medidores en almacén)
+  code       String  @unique
+
+  type         MeterType @default(MECANICO) // <-- NUEVO: Para saber la tecnología
+  batteryLevel Int? // <-- NUEVO: Nivel de batería para los IoT (null si es mecánico)
+
+  status MeterStatus @default(ACTIVO)
+
+  installedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relación opcional
+  customer CustomerProfile? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  readings Reading[]
+
+  @@index([customerId])
+}
+
+model Reading {
+  id String @id @default(cuid())
+
+  meterId      String
+  technicianId String
+
+  previousReading Float
+  currentReading  Float
+
+  consumption Float
+
+  gpsLat Float?
+  gpsLng Float?
+
+  photoUrl String?
+
+  createdAt DateTime @default(now())
+
+  meter Meter @relation(fields: [meterId], references: [id])
+
+  technician User @relation(fields: [technicianId], references: [id])
+
+  invoice Invoice?
+
+  @@index([meterId])
+  @@index([technicianId])
+}
+
+model Invoice {
+  id String @id @default(cuid())
+
+  customerId String
+  readingId  String @unique
+
+  consumption Float
+
+  fixedCharge Float @default(0)
+
+  unitPrice Float
+
+  penaltyAmount Float @default(0)
+
+  subtotal Float
+
+  total Float
+
+  status InvoiceStatus @default(PENDIENTE)
+
+  dueDate DateTime
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  customer CustomerProfile @relation(fields: [customerId], references: [id])
+
+  reading Reading @relation(fields: [readingId], references: [id])
+
+  payments Payment[]
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model Payment {
+  id String @id @default(cuid())
+
+  invoiceId String
+  userId    String
+
+  amount Float
+
+  method PaymentMethod
+
+  reference String?
+
+  createdAt DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([invoiceId])
+  @@index([userId])
+}
+
+model ServiceCut {
+  id String @id @default(cuid())
+
+  customerId   String
+  technicianId String?
+
+  reason String
+
+  status CutStatus @default(PENDIENTE)
+
+  gpsLat Float?
+  gpsLng Float?
+
+  photoUrl String?
+
+  createdAt DateTime @default(now())
+
+  customer CustomerProfile @relation(fields: [customerId], references: [id])
+
+  technician User? @relation(fields: [technicianId], references: [id])
+
+  @@index([customerId])
+  @@index([technicianId])
+}
+
+model Notification {
+  id String @id @default(cuid())
+
+  userId String?
+
+  title   String
+  message String
+  type    String @default("system") // <-- NUEVO: 'alert', 'payment', 'system', 'info'
+
+  isRead Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  userId String? // <-- ¡CRÍTICO! Quién hizo la acción
+
+  entity   String // Ej. INVOICE, CUSTOMER
+  entityId String
+  action   String // CREATE, UPDATE, DELETE
+  oldData  Json?
+  newData  Json?
+
+  ipAddress String? // <-- (Opcional, pero muy recomendado)
+
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id]) // Relación
+
+  @@index([entity])
+  @@index([entityId])
+  @@index([userId])
+}
+
+enum CustomerCategory {
+  SOLIDARIA
+  DOMESTICA
+  COMERCIAL
+  CONDOMINIO
 }
