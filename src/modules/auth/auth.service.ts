@@ -12,7 +12,7 @@ import { UpdatePasswordDto } from './application/dto/update-password.dto';
 
 import { PrismaUserRepository } from './infrastructure/repositories/prisma-user.repository';
 import { AuditService } from '../../infrastructure/audit/audit.service';
-import { Role } from '../../../../prisma/generated/client';
+import { Role } from '../../../prisma/generated/client';
 
 @Injectable()
 export class AuthService {

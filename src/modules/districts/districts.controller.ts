@@ -44,7 +44,6 @@ export class DistrictsController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
   findAll() {
     return this.districtsService.findAll();
   }
