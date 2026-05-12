@@ -49,23 +49,58 @@ export class CustomersService {
       });
     });
   }
-  async findAll(page = 1, limit = 10) {
-    const result = await this.customersRepository.findAll({ page, limit });
+  async findAll(page = 1, limit = 10, onlyWithDebt = false) {
+    const skip = (page - 1) * limit;
 
-    const mappedData = result.data.map(customer => {
+    // --- CONSTRUCCIÓN DEL FILTRO ---
+    const where: any = {
+      deletedAt: null,
+    };
+
+    // Si el frontend pide solo deudores, filtramos por facturas vencidas
+    if (onlyWithDebt) {
+      where.invoices = {
+        some: {
+          status: 'VENCIDO'
+        }
+      };
+    }
+
+    // --- CONSULTA A BASE DE DATOS ---
+    const [total, customers] = await Promise.all([
+      this.prisma.customerProfile.count({ where }),
+      this.prisma.customerProfile.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          invoices: {
+            where: { status: 'VENCIDO' }
+          },
+          cuts: {
+            orderBy: { createdAt: 'desc' },
+            take: 1
+          },
+          district: true,
+          user: {
+            select: { email: true, lastLoginAt: true }
+          }
+        },
+        orderBy: { fullName: 'asc' }
+      })
+    ]);
+
+    // --- MAPEADO DE DATOS PARA EL FRONTEND ---
+    const mappedData = customers.map(customer => {
       // Deuda total acumulada de facturas vencidas
-      const debt = customer.invoices
-        .filter(inv => inv.status === 'VENCIDO')
-        .reduce((sum, inv) => sum + inv.total, 0);
+      const debt = customer.invoices.reduce((sum, inv) => sum + inv.total, 0);
 
-      // 🔥 CORRECCIÓN: Creamos una variable explícita de tipo string para el frontend
+      // Determinación del estado visual (displayStatus)
       let displayStatus = 'Activo';
 
       if (customer.status === 'PENDING_VERIFICATION') {
-        // Mantenemos el string exacto que el Frontend espera para el Drawer
         displayStatus = 'PENDING_VERIFICATION';
       } else {
-        // Solo calculamos Mora o Suspensión si el cliente YA está activo
         const lastCut = customer.cuts?.[0];
 
         if (lastCut && lastCut.status === 'EJECUTADO') {
@@ -77,17 +112,32 @@ export class CustomersService {
         }
       }
 
-      // Limpiamos el objeto para el frontend
-      const { invoices, cuts, ...cleanCustomer } = customer;
+      // Estructura de respuesta limpia para React/Flutter
       return {
-        ...cleanCustomer,
+        id: customer.id,
+        fullName: customer.fullName,
+        ci: customer.ci,
+        phone: customer.phone,
+        address: customer.address,
+        category: customer.category,
+        district: customer.district?.name || 'N/A',
+        email: customer.user.email,
+        lastLogin: customer.user.lastLoginAt,
         debt: debt.toFixed(2),
-        status: displayStatus, // Enviamos el string amigable al frontend
+        status: displayStatus,
         code: `C-${customer.id.slice(-5).toUpperCase()}`
       };
     });
 
-    return { data: mappedData, meta: result.meta };
+    return {
+      data: mappedData,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
   }
   async approveAndAssign(customerId: string, dto: ApproveCustomerDto, adminId: string) {
     const customer = await this.prisma.customerProfile.findUnique({
