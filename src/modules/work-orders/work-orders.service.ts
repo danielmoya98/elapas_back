@@ -32,7 +32,7 @@ export class WorkOrdersService {
         include: {
           customer: { select: { fullName: true, address: true, ci: true } },
           technician: { select: { fullName: true, email: true } },
-          meter: { select: { code: true } }
+          meter: { select: { code: true, gpsLat: true, gpsLng: true } }
         },
         orderBy: { scheduledFor: 'desc' }
       }),
