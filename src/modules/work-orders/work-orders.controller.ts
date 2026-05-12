@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator'; // 🔥 IMPORTANTE
 import { WorkOrdersService } from './work-orders.service';
 import { ExecuteInstallationDto } from './dto/execute-installation.dto';
 import { CreateBulkReadingsDto } from './dto/create-bulk-readings.dto';
@@ -12,25 +13,33 @@ import { Roles } from '../auth/presentation/decorators/roles.decorator';
 import { GetUser } from '../auth/presentation/decorators/get-user.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
+// 🔥 SOLUCIÓN AL ERROR 400: Extendemos PaginationDto para permitir type y status
+export class GetWorkOrdersDto extends PaginationDto {
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
 @ApiTags('Work Orders')
 @ApiBearerAuth()
 @Controller('work-orders')
 export class WorkOrdersController {
   constructor(private readonly workOrdersService: WorkOrdersService) { }
 
+  // 🔥 USAMOS EL NUEVO DTO AQUÍ
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  findAll(
-    @Query() paginationDto: PaginationDto,
-    @Query('type') type?: string,
-    @Query('status') status?: string,
-  ) {
+  findAll(@Query() query: GetWorkOrdersDto) {
     return this.workOrdersService.findAll(
-      Number(paginationDto.page || 1),
-      Number(paginationDto.limit || 10),
-      type,
-      status
+      Number(query.page || 1),
+      Number(query.limit || 10),
+      query.type,
+      query.status
     );
   }
 
@@ -51,7 +60,6 @@ export class WorkOrdersController {
     return this.workOrdersService.createBulkReadingOrders(dto);
   }
 
-  // 🔥 NUEVO: Admin genera Orden de Corte
   @Post('cuts')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
@@ -81,7 +89,6 @@ export class WorkOrdersController {
     return this.workOrdersService.executeReading(id, user.sub, dto);
   }
 
-  // 🔥 NUEVO: Técnico ejecuta el Corte
   @Patch(':id/execute-cut')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TECNICO')
