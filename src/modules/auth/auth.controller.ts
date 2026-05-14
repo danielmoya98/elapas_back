@@ -31,4 +31,12 @@ export class AuthController {
   updatePassword(@Request() req, @Body() dto: UpdatePasswordDto) {
     return this.authService.updatePassword(req.user.sub, dto);
   }
+
+  // 🔥 NUEVO: Recibe el token del dispositivo Flutter
+  @Patch('fcm-token')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  updateFcmToken(@Request() req, @Body('fcmToken') fcmToken: string) {
+    return this.authService.updateFcmToken(req.user.sub, fcmToken);
+  }
 }

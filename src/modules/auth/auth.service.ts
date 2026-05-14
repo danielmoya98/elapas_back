@@ -148,4 +148,10 @@ export class AuthService {
 
     return { message: 'Contraseña actualizada con éxito' };
   }
+
+  // 🔥 NUEVO: Actualiza el FCM Token en la BD
+  async updateFcmToken(userId: string, fcmToken: string) {
+    await this.usersRepository.update(userId, { fcmToken });
+    return { message: 'Token de notificaciones registrado exitosamente' };
+  }
 }
